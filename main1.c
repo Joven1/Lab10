@@ -44,12 +44,15 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc;
 
 SPI_HandleTypeDef hspi1;
+
+TIM_HandleTypeDef htim1;
 
 UART_HandleTypeDef huart1;
 
@@ -64,6 +67,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_ADC_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_TIM1_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -75,7 +79,7 @@ uint8_t command = 0xFE;
 uint8_t clear = 0x51;
 uint8_t brightness = 8;
 uint8_t home = 0x46;
-
+int second = 0;
 void transmitString_huart(UART_HandleTypeDef * huart1, char * String)
 {
     HAL_UART_Transmit(huart1,(uint8_t *) String,strlen(String),1000);
@@ -92,6 +96,50 @@ void clearLCD(SPI_HandleTypeDef * hspi1)
     HAL_SPI_Transmit(hspi1,&command,1,UINT32_MAX);
     HAL_SPI_Transmit(hspi1,&clear,1,UINT32_MAX);
     HAL_Delay(4);
+}
+
+void printNum(SPI_HandleTypeDef * hspi1,int num)
+{
+    char digit;
+    int num_reverse = 0;
+    int tester = num%10;
+    //reverse the number
+    while (num != 0)
+    {
+        num_reverse = num_reverse * 10;
+        num_reverse = num_reverse + num%10;
+        num       = num/10;
+    }
+    while(num_reverse)
+    {
+        digit = '0'+ (num_reverse%10);
+        num_reverse = num_reverse/10;
+        HAL_SPI_Transmit(hspi1,&digit,1,1000);
+        HAL_Delay(1);
+    }
+    if(tester == 0)
+    {
+        digit = '0';
+        HAL_SPI_Transmit(hspi1,&digit,1,1000);
+    }
+}
+
+void countDown(SPI_HandleTypeDef * hspi1, int num)
+{
+    while(num != 0)
+    {
+        if(second == 0)
+        {
+            num--;
+            clearLCD(hspi1);
+            printNum(hspi1,num);
+            while(second == 0)
+            {
+
+            }
+        }
+    }
+
 }
 /* USER CODE END 0 */
 
@@ -123,8 +171,19 @@ int main(void)
   MX_USART1_UART_Init();
   MX_ADC_Init();
   MX_SPI1_Init();
+  MX_TIM1_Init();
 
   /* USER CODE BEGIN 2 */
+  HAL_TIM_Base_Start_IT(&htim1);
+  /*
+  char * String = "meyers is okkie";
+  transmitString_LCD(&hspi1,String);
+  clearLCD(&hspi1);
+  transmitString_LCD(&hspi1,String);
+  */
+  clearLCD(&hspi1);
+  //printNum(&hspi1,231487123);
+  countDown(&hspi1,100);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -156,7 +215,10 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSI14State = RCC_HSI14_ON;
   RCC_OscInitStruct.HSICalibrationValue = 16;
   RCC_OscInitStruct.HSI14CalibrationValue = 16;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
+  RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
@@ -166,11 +228,11 @@ void SystemClock_Config(void)
     */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
@@ -253,6 +315,40 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
   hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
+/* TIM1 init function */
+static void MX_TIM1_Init(void)
+{
+
+  TIM_ClockConfigTypeDef sClockSourceConfig;
+  TIM_MasterConfigTypeDef sMasterConfig;
+
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 24000;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 1000;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
