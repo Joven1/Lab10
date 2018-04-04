@@ -41,7 +41,9 @@
 #include "stm32f0xx_hal.h"
 
 /* USER CODE BEGIN Includes */
-
+#include <string.h>
+#include <stdio.h>
+#include <stdint.h>
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -69,7 +71,28 @@ static void MX_SPI1_Init(void);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
+uint8_t command = 0xFE;
+uint8_t clear = 0x51;
+uint8_t brightness = 8;
+uint8_t home = 0x46;
 
+void transmitString_huart(UART_HandleTypeDef * huart1, char * String)
+{
+    HAL_UART_Transmit(huart1,(uint8_t *) String,strlen(String),1000);
+}
+
+void transmitString_LCD(SPI_HandleTypeDef * hspi1, char * String)
+{
+    HAL_SPI_Transmit(hspi1,(uint8_t *)String,strlen(String),1000);
+}
+
+//clear function does not work, because clear screen takes 1.5mS to execute
+void clearLCD(SPI_HandleTypeDef * hspi1)
+{
+    HAL_SPI_Transmit(hspi1,&command,1,UINT32_MAX);
+    HAL_SPI_Transmit(hspi1,&clear,1,UINT32_MAX);
+    HAL_Delay(4);
+}
 /* USER CODE END 0 */
 
 int main(void)
@@ -102,17 +125,6 @@ int main(void)
   MX_SPI1_Init();
 
   /* USER CODE BEGIN 2 */
-  uint8_t command = 0xFE;
-  uint8_t clear = 0x53;
-  uint8_t brightness = 8;
- // HAL_SPI_Transmit(&hspi1,&command,1,1000);
- // HAL_SPI_Transmit(&hspi1,&clear,1,1000);
-
-  char * String = "ASUS";
-  HAL_SPI_Transmit(&hspi1,(uint8_t *)String,strlen(String),1000);
-  HAL_SPI_Transmit(&hspi1,&command,1,1000);
-  HAL_SPI_Transmit(&hspi1,&clear,1,1000);
-  HAL_SPI_Transmit(&hspi1,&brightness,1,1000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
