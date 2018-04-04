@@ -80,6 +80,8 @@ uint8_t clear = 0x51;
 uint8_t brightness = 8;
 uint8_t home = 0x46;
 int second = 0;
+char character[1];
+int number;
 void transmitString_huart(UART_HandleTypeDef * huart1, char * String)
 {
     HAL_UART_Transmit(huart1,(uint8_t *) String,strlen(String),1000);
@@ -95,7 +97,7 @@ void clearLCD(SPI_HandleTypeDef * hspi1)
 {
     HAL_SPI_Transmit(hspi1,&command,1,UINT32_MAX);
     HAL_SPI_Transmit(hspi1,&clear,1,UINT32_MAX);
-    HAL_Delay(4);
+    HAL_Delay(5);
 }
 
 void printNum(SPI_HandleTypeDef * hspi1,int num)
@@ -115,7 +117,7 @@ void printNum(SPI_HandleTypeDef * hspi1,int num)
         digit = '0'+ (num_reverse%10);
         num_reverse = num_reverse/10;
         HAL_SPI_Transmit(hspi1,&digit,1,1000);
-        HAL_Delay(1);
+        HAL_Delay(2);
     }
     if(tester == 0)
     {
@@ -124,8 +126,12 @@ void printNum(SPI_HandleTypeDef * hspi1,int num)
     }
 }
 
-void countDown(SPI_HandleTypeDef * hspi1, int num)
+int countDown(SPI_HandleTypeDef * hspi1, int num)
 {
+    clearLCD(hspi1);
+    showCommands();
+    printNum(hspi1,num);
+    HAL_Delay(1000);
     while(num != 0)
     {
         if(second == 0)
@@ -138,9 +144,93 @@ void countDown(SPI_HandleTypeDef * hspi1, int num)
 
             }
         }
+        if(character[0] == 'p')
+        {
+            return num;
+        }
     }
+    blinkLED();
+    return 0;
 
 }
+
+void blinkLED()
+{
+    HAL_GPIO_WritePin(GPIOB,GPIO_PIN_7,GPIO_PIN_SET);
+    HAL_Delay(500);
+    HAL_GPIO_WritePin(GPIOB,GPIO_PIN_7,GPIO_PIN_RESET);
+    HAL_Delay(500);
+    HAL_GPIO_WritePin(GPIOB,GPIO_PIN_7,GPIO_PIN_SET);
+    HAL_Delay(500);
+    HAL_GPIO_WritePin(GPIOB,GPIO_PIN_7,GPIO_PIN_RESET);
+    HAL_Delay(500);
+    HAL_GPIO_WritePin(GPIOB,GPIO_PIN_7,GPIO_PIN_SET);
+    HAL_Delay(500);
+    HAL_GPIO_WritePin(GPIOB,GPIO_PIN_7,GPIO_PIN_RESET);
+    HAL_Delay(500);
+    HAL_GPIO_WritePin(GPIOB,GPIO_PIN_7,GPIO_PIN_SET);
+    HAL_Delay(500);
+    HAL_GPIO_WritePin(GPIOB,GPIO_PIN_7,GPIO_PIN_RESET);
+    HAL_Delay(500);
+
+}
+//UART
+void transmitString(UART_HandleTypeDef * huart1, char * String)
+{
+    HAL_UART_Transmit(huart1,(uint8_t *) String,strlen(String),1000);
+}
+
+extern void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart1)
+{
+    if((character[0] >= 48) && (character[0] <= 57))
+    {
+        int digit = character[0] - '0';
+        number = number * 10 + digit;
+    }
+   HAL_UART_Receive_IT(huart1,(uint8_t*)character,1);
+}
+
+void enable()
+{
+    char * string = "Counter Mode Enable\n\n";
+    transmitString(&huart1,string);
+}
+
+int number_prompt()
+{
+    char * string = "\nPlease enter a number: ";
+    transmitString(&huart1,string);
+    while(character[0] != '\r')
+    {
+
+    }
+    int num = number;
+    number = 0;
+    character[0] = "w";
+    return num;
+}
+void showCommands()
+{
+    char * string = "\nPress ""p"" to pause: ";
+    transmitString(&huart1,string);
+}
+
+void displaycommands(int num)
+{
+    displayRecordedTime(num);
+    char * string = "\nPress ""s"" to start:\nPress ""r"" to reset: ";
+    transmitString(&huart1,string);
+}
+
+void displayRecordedTime(int countdown)
+{
+    char * string = "\nRecorded number was ";
+    transmitString(&huart1,string);
+    char snum[10];
+    itoa(countdown,snum,10);
+    transmitString(&huart1,snum);
+}
+
 /* USER CODE END 0 */
 
 int main(void)
@@ -183,17 +273,39 @@ int main(void)
   */
   clearLCD(&hspi1);
   //printNum(&hspi1,231487123);
-  countDown(&hspi1,100);
   /* USER CODE END 2 */
+  HAL_UART_Receive_IT(&huart1,(uint8_t*)character,1);
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  enable();
   while (1)
   {
   /* USER CODE END WHILE */
-
   /* USER CODE BEGIN 3 */
-
+      //prompt the user
+      int num = number_prompt();
+      displaycommands(num);
+      while(1)
+      {
+          if(character[0] == 's')
+          {
+              num = countDown(&hspi1, num);
+              if(num == 0)
+              {
+                  break;
+              }
+              displaycommands(num);
+              if(character[0] == 'r')
+              {
+                            break;
+              }
+          }
+          if(character[0] == 'r')
+          {
+              break;
+          }
+      }
   }
   /* USER CODE END 3 */
 
@@ -329,7 +441,7 @@ static void MX_TIM1_Init(void)
   TIM_MasterConfigTypeDef sMasterConfig;
 
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 24000;
+  htim1.Init.Prescaler = 8000;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim1.Init.Period = 1000;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -391,9 +503,13 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, LD4_Pin|LD3_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -407,6 +523,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PB7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 }
 
